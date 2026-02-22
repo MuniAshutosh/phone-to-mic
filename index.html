@@ -153,7 +153,7 @@
         try {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             const stream = await navigator.mediaDevices.getUserMedia({ 
-                audio: { echoCancellation: false, noiseSuppression: false } 
+                audio: { echoCancellation: true, noiseSuppression: false } 
             });
 
             micSource = audioCtx.createMediaStreamSource(stream);
