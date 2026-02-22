@@ -1,46 +1,161 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phone Mic Pro</title>
+    <style>
+        :root {
+            --primary: #007AFF;
+            --danger: #FF3B30;
+            --bg: #f2f2f7;
+            --card: #ffffff;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background: var(--card);
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            text-align: center;
+            width: 85%;
+            max-width: 400px;
+        }
+        h1 { font-size: 1.5rem; margin-bottom: 0.5rem; color: #1c1c1e; }
+        p { color: #8e8e93; margin-bottom: 2rem; font-size: 0.9rem; }
+        
+        /* Visualizer */
+        #visualizer {
+            width: 100%;
+            height: 60px;
+            background: #e5e5ea;
+            border-radius: 10px;
+            margin-bottom: 2rem;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #bar {
+            width: 0%;
+            height: 100%;
+            background: var(--primary);
+            transition: width 0.1s ease;
+        }
+
+        /* Buttons */
+        .btn {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            margin-bottom: 10px;
+            transition: transform 0.1s, opacity 0.2s;
+        }
+        .btn:active { transform: scale(0.98); }
+        #startBtn { background-color: var(--primary); color: white; }
+        #stopBtn { background-color: transparent; color: var(--danger); display: none; }
+        
+        .status-dot {
+            height: 10px;
+            width: 10px;
+            background-color: #bbb;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+        .active-dot { background-color: #4cd964; box-shadow: 0 0 8px #4cd964; }
+    </style>
+</head>
 <body>
-    <h2>Phone Mic to Speaker</h2>
-    <button id="startBtn">Start Microphone</button>
-    <button id="stopBtn">Stop</button>
-    <p id="status">Status: Standby</p>
 
-    <script>
-        let audioCtx;
-        let micSource;
+<div class="container">
+    <h1>Pocket Mic</h1>
+    <p>Connect to Bluetooth speaker first, then tap start.</p>
+    
+    <div id="visualizer"><div id="bar"></div></div>
+    
+    <div style="margin-bottom: 15px;">
+        <span id="dot" class="status-dot"></span>
+        <span id="statusText" style="font-size: 0.8rem; font-weight: bold;">DISCONNECTED</span>
+    </div>
 
-        document.getElementById('startBtn').addEventListener('click', async () => {
-            try {
-                // 1. Initialize Audio Context with low latency settings
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)({
-                    latencyHint: 'interactive'
-                });
+    <button id="startBtn" class="btn">Start Microphone</button>
+    <button id="stopBtn" class="btn">Stop</button>
+</div>
 
-                // 2. Request Microphone Access
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    audio: {
-                        echoCancellation: false, // Turn off for better quality if using speaker
-                        noiseSuppression: false,
-                        autoGainControl: false
-                    } 
-                });
+<script>
+    let audioCtx;
+    let micSource;
+    let analyzer;
+    let animationId;
 
-                // 3. Route Mic -> Output
-                micSource = audioCtx.createMediaStreamSource(stream);
-                micSource.connect(audioCtx.destination);
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const bar = document.getElementById('bar');
+    const dot = document.getElementById('dot');
+    const statusText = document.getElementById('statusText');
 
-                document.getElementById('status').innerText = "Status: LIVE (Routing to Speaker)";
-            } catch (err) {
-                console.error(err);
-                alert("Microphone access denied or error: " + err);
-            }
-        });
+    startBtn.addEventListener('click', async () => {
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: { echoCancellation: false, noiseSuppression: false } 
+            });
 
-        document.getElementById('stopBtn').addEventListener('click', () => {
-            if (audioCtx) audioCtx.close();
-            document.getElementById('status').innerText = "Status: Stopped";
-        });
-    </script>
+            // Set up routing
+            micSource = audioCtx.createMediaStreamSource(stream);
+            analyzer = audioCtx.createAnalyser();
+            analyzer.fftSize = 256;
+            
+            // Connect nodes: Mic -> Analyzer -> Speakers
+            micSource.connect(analyzer);
+            analyzer.connect(audioCtx.destination);
+
+            // UI Updates
+            startBtn.style.display = 'none';
+            stopBtn.style.display = 'block';
+            dot.classList.add('active-dot');
+            statusText.innerText = "LIVE";
+
+            drawVisualizer();
+        } catch (err) {
+            alert("Please allow microphone access.");
+        }
+    });
+
+    function drawVisualizer() {
+        const dataArray = new Uint8Array(analyzer.frequencyBinCount);
+        analyzer.getByteFrequencyData(dataArray);
+        
+        // Get average volume level
+        const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+        bar.style.width = Math.min(average * 2, 100) + "%";
+        
+        animationId = requestAnimationFrame(drawVisualizer);
+    }
+
+    stopBtn.addEventListener('click', () => {
+        if (audioCtx) audioCtx.close();
+        cancelAnimationFrame(animationId);
+        startBtn.style.display = 'block';
+        stopBtn.style.display = 'none';
+        dot.classList.remove('active-dot');
+        statusText.innerText = "DISCONNECTED";
+        bar.style.width = "0%";
+    });
+</script>
+
 </body>
 </html>
