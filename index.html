@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Phone Mic Pro</title>
+    <title>Pocket Mic Pro</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         :root {
             --primary: #007AFF;
@@ -12,100 +13,113 @@
             --card: #ffffff;
         }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background-color: var(--bg);
             display: flex;
-            justify-content: center;
+            flex-direction: column;
             align-items: center;
-            height: 100vh;
+            justify-content: center;
+            min-height: 100vh;
             margin: 0;
+            padding: 20px;
         }
         .container {
             background: var(--card);
-            padding: 2rem;
-            border-radius: 20px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            padding: 1.5rem;
+            border-radius: 24px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
             text-align: center;
-            width: 85%;
-            max-width: 400px;
+            width: 100%;
+            max-width: 350px;
         }
-        h1 { font-size: 1.5rem; margin-bottom: 0.5rem; color: #1c1c1e; }
-        p { color: #8e8e93; margin-bottom: 2rem; font-size: 0.9rem; }
+        h1 { font-size: 1.4rem; margin: 0 0 0.5rem 0; color: #1c1c1e; }
         
-        /* Visualizer */
+        /* Visualizer Bar */
         #visualizer {
             width: 100%;
-            height: 60px;
+            height: 12px;
             background: #e5e5ea;
-            border-radius: 10px;
-            margin-bottom: 2rem;
+            border-radius: 6px;
+            margin: 1.5rem 0;
             overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
         }
         #bar {
             width: 0%;
             height: 100%;
             background: var(--primary);
-            transition: width 0.1s ease;
+            transition: width 0.05s ease;
         }
+
+        /* Volume Slider */
+        .slider-container { margin: 1rem 0; text-align: left; }
+        input[type=range] { width: 100%; margin-top: 8px; }
 
         /* Buttons */
         .btn {
             width: 100%;
-            padding: 15px;
+            padding: 16px;
             border: none;
-            border-radius: 12px;
+            border-radius: 14px;
             font-size: 1.1rem;
             font-weight: 600;
             cursor: pointer;
-            margin-bottom: 10px;
-            transition: transform 0.1s, opacity 0.2s;
+            transition: all 0.2s;
         }
-        .btn:active { transform: scale(0.98); }
         #startBtn { background-color: var(--primary); color: white; }
-        #stopBtn { background-color: transparent; color: var(--danger); display: none; }
+        #stopBtn { background-color: #f2f2f7; color: var(--danger); display: none; }
         
-        .status-dot {
-            height: 10px;
-            width: 10px;
-            background-color: #bbb;
-            border-radius: 50%;
-            display: inline-block;
-            margin-right: 5px;
+        /* QR Section */
+        .qr-section {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: white;
+            border-radius: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
-        .active-dot { background-color: #4cd964; box-shadow: 0 0 8px #4cd964; }
+        #qrcode { padding: 10px; background: white; }
+        .qr-label { font-size: 0.75rem; color: #8e8e93; margin-top: 8px; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h1>Pocket Mic</h1>
-    <p>Connect to Bluetooth speaker first, then tap start.</p>
     
     <div id="visualizer"><div id="bar"></div></div>
     
-    <div style="margin-bottom: 15px;">
-        <span id="dot" class="status-dot"></span>
-        <span id="statusText" style="font-size: 0.8rem; font-weight: bold;">DISCONNECTED</span>
+    <div class="slider-container">
+        <label style="font-size: 0.8rem; font-weight: bold; color: #444;">MIC GAIN</label>
+        <input type="range" id="gainSlider" min="0" max="2" step="0.1" value="1">
     </div>
 
-    <button id="startBtn" class="btn">Start Microphone</button>
-    <button id="stopBtn" class="btn">Stop</button>
+    <button id="startBtn" class="btn">Start Session</button>
+    <button id="stopBtn" class="btn">End Session</button>
+
+    <div class="qr-section">
+        <div id="qrcode"></div>
+        <div class="qr-label">Scan to share this Mic Link</div>
+    </div>
 </div>
 
 <script>
-    let audioCtx;
-    let micSource;
-    let analyzer;
-    let animationId;
+    let audioCtx, micSource, analyzer, gainNode, animationId;
 
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const bar = document.getElementById('bar');
-    const dot = document.getElementById('dot');
-    const statusText = document.getElementById('statusText');
+    const gainSlider = document.getElementById('gainSlider');
+
+    // Generate QR Code for current URL
+    new QRCode(document.getElementById("qrcode"), {
+        text: window.location.href,
+        width: 128,
+        height: 128,
+        colorDark : "#000000",
+        colorLight : "#ffffff",
+        correctLevel : QRCode.CorrectLevel.H
+    });
 
     startBtn.addEventListener('click', async () => {
         try {
@@ -114,36 +128,36 @@
                 audio: { echoCancellation: false, noiseSuppression: false } 
             });
 
-            // Set up routing
             micSource = audioCtx.createMediaStreamSource(stream);
             analyzer = audioCtx.createAnalyser();
-            analyzer.fftSize = 256;
+            gainNode = audioCtx.createGain();
             
-            // Connect nodes: Mic -> Analyzer -> Speakers
-            micSource.connect(analyzer);
+            // Set initial volume
+            gainNode.gain.value = gainSlider.value;
+
+            // Route: Mic -> Gain -> Analyzer -> Output
+            micSource.connect(gainNode);
+            gainNode.connect(analyzer);
             analyzer.connect(audioCtx.destination);
 
-            // UI Updates
             startBtn.style.display = 'none';
             stopBtn.style.display = 'block';
-            dot.classList.add('active-dot');
-            statusText.innerText = "LIVE";
-
-            drawVisualizer();
+            updateVisualizer();
         } catch (err) {
-            alert("Please allow microphone access.");
+            alert("Mic access is required. Please ensure you are on HTTPS.");
         }
     });
 
-    function drawVisualizer() {
+    gainSlider.addEventListener('input', (e) => {
+        if (gainNode) gainNode.gain.value = e.target.value;
+    });
+
+    function updateVisualizer() {
         const dataArray = new Uint8Array(analyzer.frequencyBinCount);
         analyzer.getByteFrequencyData(dataArray);
-        
-        // Get average volume level
         const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-        bar.style.width = Math.min(average * 2, 100) + "%";
-        
-        animationId = requestAnimationFrame(drawVisualizer);
+        bar.style.width = Math.min(average * 2.5, 100) + "%";
+        animationId = requestAnimationFrame(updateVisualizer);
     }
 
     stopBtn.addEventListener('click', () => {
@@ -151,8 +165,6 @@
         cancelAnimationFrame(animationId);
         startBtn.style.display = 'block';
         stopBtn.style.display = 'none';
-        dot.classList.remove('active-dot');
-        statusText.innerText = "DISCONNECTED";
         bar.style.width = "0%";
     });
 </script>
