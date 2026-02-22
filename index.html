@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <h2>Phone Mic to Speaker</h2>
+    <button id="startBtn">Start Microphone</button>
+    <button id="stopBtn">Stop</button>
+    <p id="status">Status: Standby</p>
+
+    <script>
+        let audioCtx;
+        let micSource;
+
+        document.getElementById('startBtn').addEventListener('click', async () => {
+            try {
+                // 1. Initialize Audio Context with low latency settings
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)({
+                    latencyHint: 'interactive'
+                });
+
+                // 2. Request Microphone Access
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: false, // Turn off for better quality if using speaker
+                        noiseSuppression: false,
+                        autoGainControl: false
+                    } 
+                });
+
+                // 3. Route Mic -> Output
+                micSource = audioCtx.createMediaStreamSource(stream);
+                micSource.connect(audioCtx.destination);
+
+                document.getElementById('status').innerText = "Status: LIVE (Routing to Speaker)";
+            } catch (err) {
+                console.error(err);
+                alert("Microphone access denied or error: " + err);
+            }
+        });
+
+        document.getElementById('stopBtn').addEventListener('click', () => {
+            if (audioCtx) audioCtx.close();
+            document.getElementById('status').innerText = "Status: Stopped";
+        });
+    </script>
+</body>
+</html>
